@@ -1,0 +1,120 @@
+import os
+import re
+import jieba
+import collections
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import numpy as np
+import PIL
+import jieba.posseg as pseg
+n = 100000
+#按行读取所需内容，每一条有效内容就是输出列表的一个元素
+def readin(fileaddress):
+    document=[]
+    with open(fileaddress,"r",encoding='utf-8') as f:
+        line=f.readlines()
+        for i in range(n):
+            line[i]=line[i].split('\t')#把每一行的字符按照'\t'分开,存入一个列表
+            document.append(line[i][1])#将该列表中的第二块，即所需的文本内容存入一个新的列表
+    return document
+#使用jieba分词
+def cut_word(document):
+    new_document=[]
+    for line in document:
+        new_line=jieba.cut(line,cut_all=False,HMM=True)#使用精确模式对文本分词
+        new_document.extend(new_line)
+    return new_document
+
+#创建停用词
+def stopwordslist():#引入从网上下载的停用词表，存入停用词列表
+    stopwords = [line.strip() for line in open("C:\\Users\\modey\\Desktop\\python数据分析\\stop_words.txt",encoding='UTF-8').readlines()]
+    return stopwords
+#停用词过滤
+def stopwords_filter(new_document):
+    new_document1=[]
+    stopwords = stopwordslist()
+    for word in new_document:
+        if word not in stopwords:#过滤“噪音”
+            new_document1.append(word)#将过滤后的词语存入新的列表
+    return new_document1
+#统计词频
+def word_analyse(new_document):
+    word_frequency={}
+    for word in new_document:
+        count=word_frequency.get(word,0)#使用字典进行词频统计
+        word_frequency[word]=count+1
+    #将统计词频后的字典变为有序字典
+    sorted_freq = collections.OrderedDict(sorted(word_frequency.items(),key=lambda dc:dc[1],reverse=True))
+    words = list(sorted_freq.keys())
+    '''print("高频词：——————")
+    print(words[:100:])
+    print("低频词：——————")#通过排序后的字典分别输出最前一部分的高频词语和最后一部分的低频词语
+    print(words[-50::])'''
+    return sorted_freq
+#单独拎出词频在前100的词语所构成的字典
+def ellection(sorted_freq):
+    words = list(sorted_freq.keys())
+    sorted_freq_100={}
+    for i in words[0:100]:
+        sorted_freq_100[i]=sorted_freq[i]
+    return sorted_freq_100
+#制作词云图
+def word_cloud(sorted_freq_100):
+    w = WordCloud(font_path='msyh.ttc',background_color='white', width=4000, 
+                  height=2000, margin=10, 
+                  max_words=200).fit_words(sorted_freq_100) #mysh.ttc微软雅黑
+    plt.imshow(w)
+    plt.show()
+    w.to_file("C:\\Users\\modey\\Desktop\\词云图.png")
+    return
+#词性分析
+def pos_analyse(document):
+    pos_dict=pseg.cut(str(document))
+    return pos_dict
+#统计不同词性的词语频数
+def pos_freq(pos_dict):
+    word_pos_freq={}
+    stopwords = stopwordslist()
+    for word,flag in pos_dict:
+        if word not in stopwords:
+            count=word_pos_freq.get(flag,0)#使用字典进行词频统计
+            word_pos_freq[flag]=count+1
+    return word_pos_freq
+'''将名词、动词和形容词的词语单独放入三个列表，然后调用词频统计函数，生成拥有特定词性的字典,
+再调用词云图函数，分别绘制三个词性词语对应的词云图'''
+def fenci_wordcloud(pos_dict):
+    n_list=[]
+    v_list=[]
+    a_list=[]
+    '''for word,flag in pos_dict:
+        if flag == 'n': 
+            n_list.append(word)'''
+    '''for word,flag in pos_dict:
+        if flag == 'v': 
+            v_list.append(word)'''
+    for word,flag in pos_dict:
+        if flag == 'a': 
+            a_list.append(word)
+    #n_dict=word_analyse(n_list)
+    #v_dict=word_analyse(v_list)
+    a_dict=word_analyse(a_list)
+    #word_cloud(n_dict)
+    #word_cloud(v_dict)
+    word_cloud(a_dict) 
+    return
+#在main函数中调用各个函数   
+def main():
+    #print(readin("C:\\Users\\modey\\Desktop\\python数据分析\\weibo.txt"))
+    document = readin("C:\\Users\\modey\\Desktop\\python数据分析\\weibo.txt")#调用读入函数
+    new_document = cut_word(document)#调用分词函数
+    #print(cut_word(document))
+    new_document1=stopwords_filter(new_document)#调用停用词过滤函数
+    #sorted_freq=word_analyse(new_document1)#调用词频统计及排序函数得到词频统计并且按词频排序的字典
+    #sorted_freq_100=ellection(sorted_freq)#在原有字典的基础上选出前100个高频词组成新字典
+    #word_cloud(sorted_freq_100)#调用词云图生成函数绘制词云图
+    pos_dict=pos_analyse(document)
+    #print(pos_freq(pos_dict))
+    fenci_wordcloud(pos_dict)
+
+if __name__ == '__main__':#防止外部调用
+    main()
