@@ -1,0 +1,101 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Apr 23 20:36:14 2023
+
+@author: modey
+"""
+
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+import numpy as np
+from PIL import Image
+import cv2 as cv
+from PIL import ImageFilter
+import functools
+from collections import Iterator
+import torchvision.models as models
+import torchvision.transforms as transforms
+import torch
+import torch.nn
+from torch.autograd import Variable 
+import torch.cuda
+TARGET_IMG_SIZE = 224
+img_to_tensor = transforms.ToTensor()
+
+
+class FaceDataset:
+    def __init__(self,path,start,max):
+        self._path=path
+        self._start=start
+        self._max=max
+        self._list=[]
+        self._n =self._max
+        self._length=0
+        self._a=self._start
+      #生成一张图片数据的ndarray形式并返回（利用PIL库实现） 
+    def image_generator(self,im_address):
+        image = Image.open(im_address)
+        re_img = np.asarray(image)
+        return re_img
+    #计算文件夹的图片数
+    def __len__(self):
+        for filename in os.listdir(self._path):
+            self._length+=1
+        return self._length
+    
+    #将文件夹下需要加载的图片数据储存在self._list列表属性中
+    def load(self):
+        if self._n!=0:
+            for filename in os.listdir(self._path):
+                im_address=os.path.join(self._path,filename)
+                #调用image_generator函数生成图片数据的ndarray形式
+                #img = FaceDataset.image_generator(self,im_address)
+                #调用image_representation_generator函数生成图片的向量形式
+                img = FaceDataset.image_representation_generator(self, im_address)
+                self._list.append(img)
+                self._n-=1
+    #__iter__方法
+    def __iter__(self):
+        return self
+    #__next__方法
+    def __next__(self):
+        if self._a < self._max:
+            x = self._list[self._a]
+            self._a +=1
+            return x
+        else:
+            raise StopIteration('大于length:{}'.format(self._length))
+    #使得使得该类的实例fd支持fd[i]的形式来获取第i+1个图片的ndarray或者向量形式       
+    def __getitem__(self,index):
+        print("getitem:",index)
+        print(self._list[index])
+        
+    #利用预训练模型vgg对于图片进行向量表示   
+    def image_representation_generator(self,im_address):
+        model = models.vgg16(pretrained=True).features[:16]#导入模型
+        model=model.eval()#一定要有这行，不然运算速度会变慢（要求梯度）而且会影响结果
+        model.cuda()# 将模型从CPU发送到GPU,如果没有GPU则删除该行
+        img=Image.open(im_address)		# 读取图片
+        img=img.resize((TARGET_IMG_SIZE, TARGET_IMG_SIZE))
+        tensor=img_to_tensor(img)	# 将图片转化成tensor
+        tensor=tensor.cuda()	# 如果只是在cpu上跑的话要将这行去掉
+        result=model(Variable(tensor))
+        result_npy=result.data.cpu().numpy()[0]# 保存的时候一定要记得转成cpu形式的，不然可能会出错
+        return result_npy
+    
+def main():       
+    c0=FaceDataset("C:\\Users\\modey\\Desktop\\python数据分析\\Aaron_Peirsol",0,5)
+    print(c0.__len__())#获取文件夹中图片的张数
+    c0.load()#调用load函数
+    '''for i in c0:
+        print(i)
+    '''
+    c1=list(c0)#将迭代器转换成列表
+    #将获取的图片向量形式转化为adarray形式并对两张图片进行余弦距离计算
+    vec1= np.array(c1[0])
+    vec2 = np.array(c1[4])
+    simi12 = np.sum(vec1 * vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+    print(simi12)#相似度
+    #c0[0]
+if __name__ == '__main__':
+    main()
