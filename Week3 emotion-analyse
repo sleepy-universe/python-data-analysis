@@ -1,0 +1,141 @@
+import jieba
+import random
+from collections import defaultdict
+n = 100000
+fileaddress1="C:\\Users\\modey\\Desktop\\python数据分析\\emotion words\\anger.txt"
+fileaddress2="C:\\Users\\modey\\Desktop\\python数据分析\\emotion words\\disgust.txt"
+fileaddress3="C:\\Users\\modey\\Desktop\\python数据分析\\emotion words\\anger.txt"
+fileaddress4="C:\\Users\\modey\\Desktop\\python数据分析\\emotion words\\joy.txt"
+fileaddress5="C:\\Users\\modey\\Desktop\\python数据分析\\emotion words\\sadness.txt"
+#将情绪字典加入jieba自定义词典中，以提高这些情绪词的识别能力
+def append_emotion(fileaddress1,fileaddress2,fileaddress3,fileaddress4,fileaddress5):
+    jieba.load_userdict(fileaddress1,fileaddress2,fileaddress3,fileaddress4,fileaddress5)
+
+#按行读取所需内容，每一条有效内容就是输出列表的一个元素
+def readin(fileaddress):
+    document=[]
+    with open(fileaddress,"r",encoding='utf-8') as f:
+        line=f.readlines()
+        for i in range(n):
+            line[i]=line[i].split('\t')#把每一行的字符按照'\t'分开,存入一个列表
+            document.append(line[i][1])#将该列表中的第二块，即所需的文本内容存入一个新的列表
+    return document
+
+#通过时间信息来读入文本(按照不同的小时来读入)
+def readin_time(fileaddress):
+    text=defaultdict(list) # 默认值为空列表
+    with open(fileaddress,"r",encoding='utf-8') as f2:
+        line=f2.readlines()
+        for i in range(n):
+            line[i]=line[i].split('\t')#将一行微博评论用'\t'分开
+            line[i][2]=line[i][2].split(' ')#将每条评论的时间字符用' '分开
+            key=int(line[i][2][3][0:2])#将每条文本的小时数设为字典的键
+            text[key].append(line[i][1])#将文本内容存入其对应的列表
+    return text
+                             
+#使用jieba分词
+def cut_words(document):
+    new_document=[]
+    for line in document:
+        new_line=jieba.cut(line,cut_all=False,HMM=True)#使用精确模式对文本分词
+        new_document.extend(new_line)
+    return new_document
+
+#创建停用词
+def stopwordslist():#引入从网上下载的停用词表，存入停用词列表
+    stopwords = [line.strip() for line in open("C:\\Users\\modey\\Desktop\\python数据\
+分析\\stop_words.txt",encoding='UTF-8').readlines()]
+    return stopwords
+
+#停用词过滤
+def stopwords_filter(new_document):
+    new_document1=[]
+    stopwords = stopwordslist()
+    for word in new_document:
+        if word not in stopwords:#过滤“噪音”
+            new_document1.append(word)#将过滤后的词语存入新的列表
+    return new_document1
+
+#微博文本情绪分析  
+def emotion_analyse_outer(new_document1,fileaddress1,fileaddress2,fileaddress3,
+fileaddress4,fileaddress5):
+    txt1,txt2,txt3,txt4,txt5=[],[],[],[],[]
+    #分别将5种情绪词典读入5个列表
+    emotion_dict_anger=open(fileaddress1,"r",encoding='utf-8')
+    for line in emotion_dict_anger:
+        txt1.append(line.strip('\n'))
+    emotion_dict_disgust=open(fileaddress2,"r",encoding='utf-8')
+    for line in emotion_dict_disgust:
+        txt2.append(line.strip('\n'))
+    emotion_dict_fear=open(fileaddress3,"r",encoding='utf-8')
+    for line in emotion_dict_fear:
+        txt3.append(line.strip('\n'))
+    emotion_dict_joy=open(fileaddress4,"r",encoding='utf-8')
+    for line in emotion_dict_joy:
+        txt4.append(line.strip('\n'))
+    emotion_dict_sadness=open(fileaddress5,"r",encoding='utf-8')
+    for line in emotion_dict_sadness:
+        txt5.append(line.strip('\n'))
+    #定义内函数
+    def inner():
+        count=0
+        x=0
+        anger,disgust,fear,joy,sadness=0,0,0,0,0
+        #运用nonlocal将外函数outer中的微博文本以及5种情绪词列表引入，使其不用重复加载
+        nonlocal new_document1,txt1,txt2,txt3,txt4,txt5
+        #判断文本中的词语是否存在于情绪列表中，并且进行词频统计
+        for i in new_document1:
+            if (i in txt1) or (i in txt2) or (i in txt3) \
+or (i in txt4) or (i in txt5):count+=1
+            if i in txt1:anger+=1
+            if i in txt2:disgust+=1
+            if i in txt3:fear+=1
+            if i in txt4:joy+=1
+            if i in txt5:sadness+=1
+        #关闭文件
+        emotion_dict_anger.close()
+        emotion_dict_disgust.close()
+        emotion_dict_fear.close()
+        emotion_dict_joy.close()
+        emotion_dict_sadness.close()
+        #对于没有情绪词的文本（中性文本），利用randint函数随机赋予情绪
+        if(count==0):
+            print("中性")
+            x=random.randint(0,5)
+            count=1
+            if(x==0):anger=1
+            if(x==1):disgust=1
+            if(x==2):fear=1
+            if(x==3):joy=1
+            if(x==4):sadness=1
+        #返回该条评论中各种情绪所占比例（即情绪向量）
+        return float(anger/count), float(disgust/count), float(fear/count), \
+float(joy/count), float(sadness/count)
+    return inner()#返回内函数
+
+#通过参数来控制并返回某种情绪的某种模式，如joy的小时模式
+def emotion_code(time_dict):
+    change={}#设置一个空字典
+    print('anger:')
+    for i in range(0,24):#循环（24个小时）
+        #对二十四个小时对应的文本分别进行分词、停用词过滤等操作
+        new_text=cut_words(time_dict[i])
+        new_text1=stopwords_filter(new_text)
+        #调用情绪分析函数，对词语进行情绪分析，并且分别统计出各个小时五种情绪的情绪比例（n1/n）
+        f1=emotion_analyse_outer(new_text1,fileaddress1,fileaddress2,
+                                 fileaddress3,fileaddress4,fileaddress5)
+        change[i]=round(f1[0],3)#通过输出joy对应变量部分来输出joy的情绪比例变化，保留3位小数
+    print(change)
+    
+#在main函数中调用各个函数
+def main():
+    #print(readin("C:\\Users\\modey\\Desktop\\python数据分析\\weibo.txt"))
+    time_dict=readin_time("C:\\Users\\modey\\Desktop\\python数据分析\\weibo.txt")
+    emotion_code(time_dict)
+    #new_document = cut_words(document)#调用分词函数
+    #print(cut_words(document))
+    #new_document1=stopwords_filter(new_document)#调用停用词过滤函数
+    #print(new_document1)
+    
+if __name__ == '__main__':#防止外部调用
+    main()
