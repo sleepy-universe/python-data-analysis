@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue May  9 09:20:50 2023
+
+@author: modey
+"""
+from multiprocessing import Process, Queue
+import librosa
+import matplotlib.pyplot as plt
+import os
+import time
+sound_file = "C:\\CloudMusic"
+#time_start = time.time()  # 记录开始时间
+#设置分发函数，用于队列元素的输入（声音文件名称）
+def distribute(q,soundname):
+    q.put(soundname)
+    print("The filename is:{}".format(soundname))
+#处理声音文件函数，用于队列元素的取出（计算音高和声强）   
+def sound_calculation(soundaddress,q):
+    name=q.get()
+    if name is None:
+        print("no music file.")
+        return
+    else:
+        y, sr = librosa.load(soundaddress)
+        pitch = librosa.yin(y,fmin = librosa.note_to_hz('C1'),fmax = librosa.note_to_hz('C7'))#音高
+        sdb = librosa.amplitude_to_db(librosa.feature.rms(y=y), ref=0.00002)#声强
+        with open("C:\\Users\\modey\Desktop\\{}.txt".format(name),"w",encoding='utf-8') as f:
+            f.write("音高:{}".format(pitch)+'\n')
+            f.write("声强:{}".format(sdb))
+        
+class Sound_Calculation(Process):
+    def __init__(self,q,sound_address,sound_name): 
+        super().__init__()
+        self._q=q
+        self._sound_address = sound_address
+        self._sound_name = sound_name
+    def run(self):
+        q.put(self._sound_name)
+        print("The filename is:{}".format(self._sound_name))
+        name=q.get()
+        if name is None:
+            print("no music file.")
+            return
+        else:
+            y, sr = librosa.load(self._sound_address)
+            pitch = librosa.yin(y,fmin = librosa.note_to_hz('C1'),fmax = librosa.note_to_hz('C7'))#音高
+            sdb = librosa.amplitude_to_db(librosa.feature.rms(y=y), ref=0.00002)#声强
+            with open("C:\\Users\\modey\Desktop\\{}.txt".format(self._sound_name),"w",encoding='utf-8') as f:
+                f.write("音高:{}".format(pitch)+'\n')
+                f.write("声强:{}".format(sdb))
+            
+        
+if __name__=='__main__':
+    q = Queue()
+    plist=[]
+    soundlis=[]
+    distributer=[]
+    calculator=[]
+    for filename in os.listdir(sound_file):
+        s_add = os.path.join(sound_file,filename)#将声音文件的地址逐个存入列表
+        soundlis.append(s_add)
+
+        #两个变量分别为声音文件的地址和声音文件的名称,通过循环来分发参数
+    '''for i ,j in zip(soundlis,os.listdir(sound_file)):
+        #s = Process(target=sound_calculation,args=(i,j))#通过process类构建子进程
+        s = Sound_Calculation(i,j)#通过继承Process类来构建子进程
+        s.start()
+        plist.append(s)
+    for s in plist:
+        s.join()'''
+    
+    #采用队列分发参数（声音文件名称），任务二
+    for i in os.listdir(sound_file):
+        dis = Process(target=distribute,args=(q,i))#接收参数的进程
+        distributer.append(dis)
+    for j in soundlis:
+        cal = Process(target=sound_calculation,args=(j,q))
+        calculator.append(cal)
+    for dis in distributer:
+        dis.start()
+    for cal in calculator:
+        cal.start()
+    for dis in distributer:
+        dis.join()
+    for cal in calculator:
+        q.put(None)
+    #任务三
+    '''for i ,j in zip(soundlis,os.listdir(sound_file)):
+        #s = Process(target=sound_calculation,args=(i,j))#通过process类构建子进程
+        s = Sound_Calculation(q,i,j)#通过继承Process类来构建子进程
+        s.start()
+        plist.append(s)
+    for s in plist:
+        s.join()
+    print("end")'''
