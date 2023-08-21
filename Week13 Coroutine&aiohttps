@@ -1,0 +1,86 @@
+import aiohttp
+import aiofiles
+import asyncio
+from lxml import etree
+from tqdm import tqdm
+import os
+import re
+import time
+headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.50'
+        }
+#实现协程协程爬虫类
+class VoaCrawler:
+    def __init__(self,foldpath):
+        self._foldpath=foldpath
+        if not os.path.exists(self._foldpath) and self._foldpath != '':#新建一个文件夹名录
+            os.mkdir(self._foldpath)
+        if self._foldpath != '':
+            self._foldpath = self._foldpath + '/'
+
+    #得到页面内容
+    async def get_links(self,url):
+        #利用async实现页面的爬取
+        async with aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(limit=64, ssl=False, keepalive_timeout=5)) as client:
+            async with await client.get(url, headers=headers) as rsp:
+                content = await rsp.text()
+        return content
+    
+    #解析页面
+    async def parse_page(self,content):
+        html = etree.HTML(content)
+        links=[]
+        for j in range(1,51):#爬取第1-50条
+            links = links+html.xpath('//*[@id="righter"]/div[3]/ul/li[%s]/a/@href'%str(j))
+        return links
+    
+    #分析并得到mp3的链接
+    async def get_mp3(self,links):
+        mlist=[]
+        for link in tqdm(links[:5]):#爬取每页的前五个mp3文件
+            url1 = 'https://www.51voa.com'+link
+            async with aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(limit=64, ssl=False, keepalive_timeout=5)) as client:
+                async with await client.get(url1, headers=headers) as response:
+                    text = await response.text()
+                    mlist = mlist+list(set(re.findall(r'https://.+?\.mp3', text)))
+        return mlist
+
+    #下载mps文件（利用aiofiles）
+    async def download(self,url):
+        content=await self.get_links(url)
+        links=await self.parse_page(content)
+        mlist=await self.get_mp3(links)
+        for murl in tqdm(mlist):
+            fname = murl[murl.rfind('/')+1:]
+            afilename = self._foldpath + '/' + fname + '.mp3'#文件的保存地址
+            async with aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(limit=64, ssl=False, keepalive_timeout=5)) as client:
+                async with await client.get(murl, headers=headers) as resp:
+                    async with aiofiles.open(f"{afilename}", mode="wb") as f:#利用aiofiles储存音频文件
+                        await f.write(await resp.content.read()) 
+
+    # 异步
+    def aio_main(self,lis1):
+        loop = asyncio.get_event_loop()
+        tasks = []
+        for url in lis1:
+            tasks += [self.download(url)]
+        loop.run_until_complete(asyncio.gather(*tasks))
+        return
+
+    def run(self, lis1):
+        self.aio_main(lis1)
+            
+if __name__ == '__main__':
+    starttime =  time.time()#记录时间
+    lis1=[]
+    for i in range(2,5):#爬入第2页到第4页
+        url=f'https://www.51voa.com/VOA_Standard_{i}.html'
+        lis1.append(url)
+    foldpath = "./voasound"
+    vc=VoaCrawler(foldpath)#实例化
+    vc.run(lis1)#调用run（）方法
+    duration = time.time() - starttime
+    print(duration)
