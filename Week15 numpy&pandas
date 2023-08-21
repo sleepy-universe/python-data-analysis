@@ -1,0 +1,178 @@
+from pyecharts.charts import Line,Pie,Map
+import pandas as pd
+import numpy as np
+from seaborn.matrix import heatmap  #绘制热力图
+import matplotlib.pyplot as plt
+from pyecharts.charts import Geo
+from pyecharts import options as opts
+from pyecharts.globals import GeoType
+import pyecharts
+from abc import ABCMeta, abstractmethod
+ 
+class Data_analysis(metaclass=ABCMeta):
+    def __init__(self,path_list,region_list):
+        self.path_list = path_list
+        self.region_list = region_list#路径列表和监测地区列表
+    def read_csv(self,pot):#根据指定地点来用panda读入数据
+        i = self.region_list.index(pot)
+        df = pd.read_csv(self.path_list[i],header=0)
+        return df
+    @abstractmethod
+    def time_analysis(self,station,pollutant):
+        pass
+    @abstractmethod
+    def area_analysis(self,time):
+        pass
+    
+class Data_plt(Data_analysis):
+    '''数据可视化类'''
+    def __init__(self,path_list,region_list):
+        super().__init__(path_list, region_list)
+    #实现按时间分析的抽象方法
+    def time_analysis(self,pot,pollutant,time_str):
+    
+        #绘制出某一个检测地点某种污染物随时间的变化的折线图
+        df = Data_analysis.read_csv(self,pot)
+        data_array = np.array(df)
+        data_list =data_array.tolist() #将dataframe转化为list
+        time_list = []
+        num_list = []
+        row_name = ['No','year','month','day','hour','PM2.5','PM10','SO2','NO2','CO','O3','TEMP','PRES','DEWP','RAIN','wd','WSPM','station']
+        index1 = row_name.index(pollutant) 
+        for i in data_list[1:1000]:
+            time_list.append(str(i[1])+'.'+str(i[2])+'.'+str(i[3])+'.'+str(i[4])) #对应的时间
+            num_list.append(i[index1]) #对应的值
+        line = Line()
+        line.add_xaxis(time_list)
+        line.add_yaxis(pot,num_list)
+        line.render(f'{pot}line.html')
+    
+        #绘制在某一时间下，某一检测地点不同污染物的占比的饼图       
+        time = time_str.split('.')
+        year = int(time[0]);month = int(time[1]);day = int(time[2]);hour = int(time[3])
+        
+        i = 0;flag = 1
+        while i < len(data_list) and flag == 1:
+            if year == data_list[i][1] and month == data_list[i][2] and day == data_list[i][3] and hour == data_list[i][4]:
+                num_list = data_list[i][5:11]
+                flag = 0
+            i = i + 1
+        
+        pollutants = ['PM2.5','PM10','SO2','NO2','CO','O3']
+        data_tuple=list(zip(pollutants,num_list))
+        pie = Pie()
+        pie.add(pot, data_tuple)
+        pie.render(f'{pot}pie.html')
+        
+        
+    #实现按空间分析的抽象方法 
+    def area_analysis(self,time_str,pollutant):
+        #传入时间和污染物，在北京地图上绘制不同检查站的数据
+        values = []
+        row_name = ['No','year','month','day','hour','PM2.5','PM10','SO2','NO2','CO','O3','TEMP','PRES','DEWP','RAIN','wd','WSPM','station']
+        index1 = row_name.index(pollutant) #找出我们选定的污染物在数据中的列数
+        time = time_str.split('.')
+        year = int(time[0]);month = int(time[1]);day = int(time[2]);hour = int(time[3]) #将我们传入的数据分割
+        for region in self.region_list:  #对每个监测站进行遍历
+            df = Data_analysis.read_csv(self,region)
+            data_array = np.array(df)
+            data_list =data_array.tolist() #由dataframe转化为list
+            i = 0;flag = 1
+            while i < len(data_list) and flag == 1:
+                #对比时间
+                if year == data_list[i][1] and month == data_list[i][2] and day == data_list[i][3] and hour == data_list[i][4]:
+                    value = data_list[i][index1]
+                    values.append(value)
+                    flag = 0
+                i = i + 1
+        
+        #下面开始地图绘制环节
+        city = '北京'
+        g = pyecharts.charts.Geo()
+        g.add_schema(maptype=city)
+        # 定义坐标对应的名称，添加到坐标库中 add_coordinate(name, 经度, 纬度)
+        g.add_coordinate('奥体中心', 116.401665, 39.985069)
+        g.add_coordinate('昌平', 116.23128, 40.22077)
+        g.add_coordinate('定陵', 116.10098901489258, 40.36113569243784)
+        g.add_coordinate('东四', 116.42371240356445, 39.92600162086124)
+        g.add_coordinate('官园', 116.35916772583008, 39.93495273529134)
+        g.add_coordinate('古城', 116.197319, 39.908829)
+        g.add_coordinate('怀柔', 116.64601388671875, 40.32397764738031)
+        g.add_coordinate('农展馆', 116.46147790649414, 39.94127046425559)
+        g.add_coordinate('顺义', 116.66146341064453, 40.15966193736629)
+        g.add_coordinate('天坛', 116.41189990551759, 39.88038235336456)
+        g.add_coordinate('万柳', 116.28929076702882, 39.972465789671865)
+        g.add_coordinate('万寿西宫', 116.35602412731934, 39.878933304535224)
+        data_pair = []
+        #通过一个循环，得到一个数据对
+        for i in range(len(values)):
+            data_pair.append((self.region_list[i],values[i]))
+        # 将数据添加到地图上
+        g.add('', data_pair, type_=GeoType.EFFECT_SCATTER, symbol_size=7)
+        # 设置样式
+        g.set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+        # 自定义分段 color 可以用取色器取色
+        pieces = [
+            {'max': 1, 'label': '0以下', 'color': '#50A3BA'},
+            {'min': 1, 'max': 10, 'label': '1-10', 'color': '#3700A4'},
+            {'min': 10, 'max': 20, 'label': '10-20', 'color': '#81AE9F'},
+            {'min': 20, 'max': 30, 'label': '20-30', 'color': '#E2C568'},
+            {'min': 30, 'max': 50, 'label': '30-50', 'color': '#FCF84D'},
+            {'min': 50, 'max': 100, 'label': '50-100', 'color': '#DD0200'},
+            {'min': 100, 'max': 200, 'label': '100-200', 'color': '#DD675E'},
+            {'min': 200, 'label': '200以上', 'color': '#D94E5D'}  # 有下限无上限
+        ]
+        #  is_piecewise 是否自定义分段， 变为true 才能生效
+        g.set_global_opts(
+            visualmap_opts=opts.VisualMapOpts(is_piecewise=True, pieces=pieces),
+            title_opts=opts.TitleOpts(title="{},{}各地{}检测".format(time_str,city,pollutant)),
+        )
+        g.render('map.html')
+ 
+class NotNumError(Exception):   #NotNumError类,用来检验是否有空值
+    def __init__(self,region_list,pollutants,pot,df):
+        #初始化函数
+        self.region_list = region_list
+        self.pollutants = pollutants
+        self.pot = pot
+        self.df = df
+    def check(self):
+        #检查函数，传入一个dataframe
+        data_array = np.array(self.df)
+        data_list =data_array.tolist() #由dataframe转化为list
+        flag = 0
+        for row in data_list:
+            for index in range(len(row)):
+                if row[index] == None:
+                    self.message = f'在{self.region}监测点，第{row[0]}行，第{index+1}个数据为空'
+                    flag = 1
+        if flag == 0:
+            self.message  = '没有错误'
+    def __str__(self):
+        #抛出异常信息的初始化函数
+        return self.message  #抛出异常实例
+    
+
+def main():
+    path_list = ["C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Aotizhongxin_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Changping_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Dingling_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Dongsi_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Guanyuan_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Gucheng_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Huairou_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Nongzhanguan_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Shunyi_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Tiantan_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Wanliu_20130301-20170228.csv",
+                 "C:\\Users\\modey\\Desktop\\PRSA_Data_20130301-20170228\\PRSA_Data_Wanshouxigong_20130301-20170228.csv"]
+    row_name = ['No','year','month','day','hour','PM2.5','PM10','SO2','NO2','CO','O3','TEMP','PRES','DEWP','RAIN','wd','WSPM','station']
+    region_list = ['奥体中心','昌平','定陵','东四','官园','古城','怀柔','农展馆','顺义','天坛','万柳','万寿西宫']
+    PLT = Data_plt(path_list, region_list)
+    PLT.region_heatmap('奥体中心')
+    PLT.time_analysis('奥体中心','PM2.5','2017.2.28.8')
+    PLT.area_analysis('2014.8.23.12','NO2')
+ 
+ 
+if __name__=='__main__':
+    main()
