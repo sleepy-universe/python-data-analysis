@@ -1,0 +1,133 @@
+from multiprocessing import Process, Queue,current_process
+from threading import Thread,RLock
+import concurrent.futures
+import librosa
+import matplotlib.pyplot as plt
+import requests
+from lxml import etree
+from tqdm import tqdm
+import re
+import time
+
+headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.50'
+        }
+#通过类继承，实现一个线程类，获取链接地址列表
+class Get_Link(Thread):
+    def __init__(self,url,links,lock):
+        super().__init__()
+        self._url=url
+        self._links=links
+        self._lock=lock
+    def run(self):
+        self._lock.acquire()
+        response = requests.get(self._url)
+        html = etree.HTML(response.text)
+        for j in range(1,51):#爬取第1-50条
+            self._links = self._links+html.xpath('//*[@id="righter"]/div[3]/ul/li[%s]/a/@href'%str(j))
+        '''print(len(links),links[0:11])
+        print("************************************************")'''
+        self._lock.release()
+    #获取第一问中爬取的链接地址列表
+    def get(self):
+        Thread.join(self)#等待线程执行完毕
+        try:
+            return self._links
+        except Exception:
+            return None
+'''
+分析并得到mp3的链接
+ https://www.51voa.com/VOA_Standard_English/u-s-supports-diversity-of-energy-sources-in-europe-79541.html 从这类页面上，抽取mp3的那个链接。
+'''
+#通过类继承，实现一个线程类，获取MP3文件链接地址
+class Get_Mp3link(Thread):
+    def __init__(self,links,mlist,lock):
+        super().__init__()
+        self._links=links
+        self._mlist=mlist
+        self._lock=lock
+    def run(self):
+        self._lock.acquire()
+        for link in tqdm(links[:5]):
+            url = 'https://www.51voa.com'+link
+            # print(url)
+            response = requests.get(url,headers = headers)
+            self._mlist = self._mlist+list(set(re.findall(r'https://.+?\.mp3', response.text)))
+        #print(len(mlist),mlist[:len(mlist)])
+        self._lock.release()
+    def get(self):
+        Thread.join(self)
+        try:
+            return self._mlist
+        except Exception:
+            return None
+#通过类继承，实现一个线程类，下载mp3文件
+class Save_Mp3(Thread):
+    def __init__(self,mlist,address,lock):
+        super().__init__()
+        self._mlist=mlist
+        self._address=address
+        self._lock=lock
+    def run(self):
+        self._lock.acquire()
+        for murl in tqdm(self._mlist):
+            #print(murl)
+            mp3_stream = requests.get(murl,headers = headers).content
+            fname = murl[murl.rfind('/')+1:]
+            #print(fname)
+            self._address.append(f'C:\\Users\\modey\\Desktop\\{fname}')
+            with open(f'C:\\Users\\modey\\Desktop\\{fname}','wb') as f:
+                f.write(mp3_stream)
+        self._lock.release()
+    def get(self):
+        Thread.join(self)
+        try:
+            return self._address
+        except Exception:
+            return None
+        
+#通过类继承，实现一个线程类，计算储存的MP3文件的语速
+class Speed_Calculation(Thread):
+    def __init__(self,sound_address,lock):
+        super().__init__()
+        self._sound_address=sound_address
+        self._lock=lock
+    def run(self):
+        self._lock.acquire()
+        for i in self._sound_address:
+            y, sr = librosa.load(i)
+            onsets = librosa.onset.onset_detect(y=y,sr=sr,units="time",hop_length=128,backtrack=False) 
+            number_of_words = len(onsets)
+            duration = len(y)/sr
+            words_per_second = number_of_words/duration#计算语速
+            print(f'words-per-second: {words_per_second}\nduration: {duration} seconds\nnumber-of-words: {number_of_words}')
+            print("*********************")
+        self._lock.release()
+
+if __name__=='__main__':
+    starttime =  time.time()
+    lis1=[]
+    lock = RLock()
+    for i in range(2,5):#爬入第2页到第4页
+        url=f'https://www.51voa.com/VOA_Standard_{i}.html'
+        gl = Get_Link(url,[],lock)#实例化
+        lis1.append(gl)
+    for i in lis1:
+        i.start()   
+    for i in lis1:
+        i.join()
+    for i in lis1:
+        links=i.get()#调用第一问线程类中的get方法获取地址链接列表
+        gml=Get_Mp3link(links,[],lock)#实例化
+        gml.start()
+        gml.join()
+        mlist=gml.get()#调用第二问中线程类中的get方法获取mp3文件链接列表
+        sm=Save_Mp3(mlist,[],lock)#实例化
+        sm.start()
+        sm.join()
+        sound_address=sm.get()#获得保存至本地的MP3文件地址列表
+        sc=Speed_Calculation(sound_address,lock)#实例化
+        sc.start()
+        sc.join()
+    duration = time.time() - starttime
+    print(duration)
